@@ -5,6 +5,7 @@ from loguru import logger
 
 from src import audio, llm
 from src.constants import APPLICATION_WIDTH, OFF_IMAGE, ON_IMAGE
+from src.transcriber import T_Type, TranscriberFactory
 
 
 def get_text_area(text: str, size: tuple) -> sg.Text:
@@ -60,13 +61,7 @@ WINDOW = sg.Window("Keyboard Test", layout, return_keyboard_events=True, use_def
 
 logger.debug = print
 
-def background_recording_loop() -> None:
-    audio_data = None
-    while record_status_button.metadata.state:
-        audio_sample = audio.record_batch()
-        audio_data = np.vstack((audio_data, audio_sample)) if audio_data is not None else audio_sample
-    audio.save_audio_file(audio_data)
-
+scriber = TranscriberFactory.get_transcriber(T_Type.DEEPGRAM)
 
 while True:
     event, values = WINDOW.read()
@@ -77,20 +72,23 @@ while True:
 
     event = event.split(':')[0].upper() if isinstance(event, str) else event
 
-    if event in ("r", "R"):  # start recording
-        logger.debug("Starting recording...")
-        record_status_button.metadata.state = not record_status_button.metadata.state
-        if record_status_button.metadata.state:
-            WINDOW.perform_long_operation(background_recording_loop, "-FINISHED-RECORDING-")
-        record_status_button.update(image_data=ON_IMAGE if record_status_button.metadata.state else OFF_IMAGE)
+    if event == "R":
+        button_on = not record_status_button.metadata.state
+        record_status_button.metadata.state = button_on
+        logger.debug(f"Recording toggled {button_on}...")
+        if button_on:
+            WINDOW.perform_long_operation(scriber.background_recording, "-FINISHED-RECORDING-")
+        else:
+            scriber.stop_recording()
+        record_status_button.update(image_data=ON_IMAGE if button_on else OFF_IMAGE)
 
-    elif event in ("a", "A"):  # send audio to OpenAI Whisper model
+    elif event == "A":
         logger.debug("Analyzing audio...")
         analyzed_text_label.update("Start analyzing...")
-        WINDOW.perform_long_operation(llm.transcribe_audio, "-WHISPER COMPLETED-")
+        WINDOW.perform_long_operation(scriber.transcribe, "-TRANSCRIPTION COMPLETE-")
 
-    elif event == "-WHISPER COMPLETED-":
-        audio_transcript = values["-WHISPER COMPLETED-"]
+    elif event == "-TRANSCRIPTION COMPLETE-":
+        audio_transcript = values["-TRANSCRIPTION COMPLETE-"]
         analyzed_text_label.update(audio_transcript)
 
         # Generate quick answer:

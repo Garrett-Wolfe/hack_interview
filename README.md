@@ -11,3 +11,11 @@
 pip install -r requirements.txt
 python ./src/simple_ui.py
 ```
+
+### Key Handling:
+
+Ensure that your OpenAI key is stored as an enviornment variable like so. 
+
+```sh
+export OPENAI_API_KEY="your_api_key_here"
+```

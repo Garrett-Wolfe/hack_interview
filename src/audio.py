@@ -20,7 +20,7 @@ logger.debug = print
 logger.debug(f"Mic being used: {SPEAKER_ID}")
 
 
-def record_batch(record_sec: int = RECORD_SEC) -> np.ndarray:
+def record_batch(record_sec: float = RECORD_SEC) -> np.ndarray:
     """
     Records an audio batch for a specified duration.
 
@@ -36,14 +36,14 @@ def record_batch(record_sec: int = RECORD_SEC) -> np.ndarray:
         print(audio_sample)
         ```
     """
-    logger.debug(f"Recording for {record_sec} second(s)...")
-
-    total_frames = SAMPLES_PER_SEC * record_sec * NUMFRAMES
+    logger.debug(f"Recording for {record_sec:.3f} second(s)...")
+    num_samples = int(SAMPLES_PER_SEC * record_sec)
+    total_frames = num_samples * NUMFRAMES
     full_audio_sample = np.zeros((total_frames, 2))
     frame_index = 0
 
     with MIC.recorder(samplerate=SAMPLE_RATE, blocksize=BLOCKSIZE) as recorder:
-        for _ in range(SAMPLES_PER_SEC * record_sec):
+        for _ in range(num_samples):
             full_audio_sample[frame_index:frame_index + NUMFRAMES] = recorder.record(numframes=NUMFRAMES)
             frame_index += NUMFRAMES
 
