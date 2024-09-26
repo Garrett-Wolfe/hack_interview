@@ -2,6 +2,7 @@ import numpy as np
 import PySimpleGUI as sg
 from loguru import logger
 
+
 from src import audio, llm
 from src.constants import APPLICATION_WIDTH, OFF_IMAGE, ON_IMAGE
 
@@ -34,7 +35,7 @@ class BtnInfo:
 sg.theme("DarkAmber")  # Add a touch of color
 record_status_button = sg.Button(
     image_data=OFF_IMAGE,
-    k="-TOGGLE1-",
+    k="R",
     border_width=0,
     button_color=(sg.theme_background_color(), sg.theme_background_color()),
     disabled_button_color=(sg.theme_background_color(), sg.theme_background_color()),
@@ -57,29 +58,30 @@ layout = [
 ]
 WINDOW = sg.Window("Keyboard Test", layout, return_keyboard_events=True, use_default_focus=False)
 
+logger.debug = print
 
 def background_recording_loop() -> None:
     audio_data = None
     while record_status_button.metadata.state:
         audio_sample = audio.record_batch()
-        if audio_data is None:
-            audio_data = audio_sample
-        else:
-            audio_data = np.vstack((audio_data, audio_sample))
+        audio_data = np.vstack((audio_data, audio_sample)) if audio_data is not None else audio_sample
     audio.save_audio_file(audio_data)
 
 
 while True:
     event, values = WINDOW.read()
+    print(f"Event: {event}")
     if event in ["Cancel", sg.WIN_CLOSED]:
         logger.debug("Closing...")
         break
+
+    event = event.split(':')[0].upper() if isinstance(event, str) else event
 
     if event in ("r", "R"):  # start recording
         logger.debug("Starting recording...")
         record_status_button.metadata.state = not record_status_button.metadata.state
         if record_status_button.metadata.state:
-            WINDOW.perform_long_operation(background_recording_loop, "-RECORDING-")
+            WINDOW.perform_long_operation(background_recording_loop, "-FINISHED-RECORDING-")
         record_status_button.update(image_data=ON_IMAGE if record_status_button.metadata.state else OFF_IMAGE)
 
     elif event in ("a", "A"):  # send audio to OpenAI Whisper model

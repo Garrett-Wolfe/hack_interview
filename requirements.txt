@@ -1,5 +1,5 @@
 numpy==1.26.0
-openai==0.28.1
+openai==1.48.0
 pysimplegui==4.60.5
 soundcard==0.4.2
 soundfile==0.12.1

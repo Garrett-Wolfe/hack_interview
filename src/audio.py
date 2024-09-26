@@ -4,9 +4,20 @@ import soundcard as sc
 import soundfile as sf
 from loguru import logger
 
-from src.constants import OUTPUT_FILE_NAME, RECORD_SEC, SAMPLE_RATE
+from src.constants import OUTPUT_FILE_NAME
+
+SAMPLE_RATE = 48000             # [Hz]. sampling rate.
+RECORD_SEC = 1                  # [sec]. duration recording audio.
+BLOCKSIZE = 256                 # good value suggested by documentation
+NUMFRAMES = BLOCKSIZE // 2      # numframes should be less than blocksize per the docs
+SAMPLES_PER_SEC = SAMPLE_RATE // NUMFRAMES
 
 SPEAKER_ID = str(sc.default_speaker().name)
+MIC = sc.get_microphone( id=SPEAKER_ID, include_loopback=False) 
+
+
+logger.debug = print
+logger.debug(f"Mic being used: {SPEAKER_ID}")
 
 
 def record_batch(record_sec: int = RECORD_SEC) -> np.ndarray:
@@ -25,13 +36,18 @@ def record_batch(record_sec: int = RECORD_SEC) -> np.ndarray:
         print(audio_sample)
         ```
     """
-    logger.debug("Recording for {record_sec} second(s)...")
-    with sc.get_microphone(
-        id=SPEAKER_ID,
-        include_loopback=True,
-    ).recorder(samplerate=SAMPLE_RATE) as mic:
-        audio_sample = mic.record(numframes=SAMPLE_RATE * record_sec)
-    return audio_sample
+    logger.debug(f"Recording for {record_sec} second(s)...")
+
+    total_frames = SAMPLES_PER_SEC * record_sec * NUMFRAMES
+    full_audio_sample = np.zeros((total_frames, 2))
+    frame_index = 0
+
+    with MIC.recorder(samplerate=SAMPLE_RATE, blocksize=BLOCKSIZE) as recorder:
+        for _ in range(SAMPLES_PER_SEC * record_sec):
+            full_audio_sample[frame_index:frame_index + NUMFRAMES] = recorder.record(numframes=NUMFRAMES)
+            frame_index += NUMFRAMES
+
+    return full_audio_sample
 
 
 def save_audio_file(audio_data: np.ndarray, output_file_name: str = OUTPUT_FILE_NAME) -> None:
