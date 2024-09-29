@@ -58,10 +58,7 @@ layout = [
 ]
 WINDOW = sg.Window("Keyboard Test", layout, return_keyboard_events=True, use_default_focus=False)
 
-logger.debug = print
-
 scriber = TranscriberFactory.get_transcriber(T_Type.DEEPGRAM_STREAM)
-
 while True:
     event, values = WINDOW.read()
     logger.debug(f"Event: {event}")

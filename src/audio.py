@@ -18,7 +18,6 @@ SPEAKER_ID = str(sc.default_speaker().name)
 MIC = sc.get_microphone( id=SPEAKER_ID, include_loopback=False)
 
 
-logger.debug = print
 logger.debug(f"Mic being used: {SPEAKER_ID}, channels {MIC.channels}")
 
 
