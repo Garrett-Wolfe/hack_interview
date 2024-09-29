@@ -1,4 +1,7 @@
+"""Transcriber Objects."""
+import os
 import threading
+import time
 import numpy as np
 from openai import OpenAI
 from loguru import logger
@@ -9,7 +12,6 @@ from deepgram import DeepgramClient, PrerecordedOptions, LiveTranscriptionEvents
 
 from src import audio
 from src.constants import OUTPUT_FILE_NAME
-DEEPGRAM_API_KEY = '91bbe5940a7fb14c7d2bbd0e986cb01eca04cee9'
 
 
 class T_Type(str, Enum):
@@ -18,29 +20,52 @@ class T_Type(str, Enum):
     DEEPGRAM_STREAM = "DEEPGRAM_STREAM"
 
 class Transcriber(ABC):
+    """
+    Transcriber instances implement different strategies for recording audio and transcribing it.\n
+    They all have three methods:
+    - background_recording = a methods that handles recording audio
+    - stop_recording = sets OS level flag to halt recording
+    - transcribe = converts the audio into text
+    """
 
     def __init__(self, file_path: str = OUTPUT_FILE_NAME) -> None:
         super().__init__()
         self.file_path: str = file_path
-        self.stop_recording_event: threading.Event = threading.Event()
+        self._stop_recording_event: threading.Event = threading.Event()
 
     def stop_recording(self):
-        self.stop_recording_event.set()
+        """
+        Sets the event that will halt the background_recording method and force it to return
+        Returns:
+            None
+        """
+        self._stop_recording_event.set()
     
     def background_recording(self) -> None:
+        """
+        Method indended to be in it's own thread. It will loop indefinetly recording audio.
+        Only halts when the thread_event "stop_recording_event" is set. This method will clear 
+        "stop_recording_event" just before returning. 
+
+        Returns:
+            None
+
+        Example:
+            ```python
+            background_thread = threading.Thread(target=background_recording)
+            ```
+        """
         audio_data = None
-        while not self.stop_recording_event.is_set():
+        while not self._stop_recording_event.is_set():
             audio_sample = audio.record_batch()
             audio_data = np.vstack((audio_data, audio_sample)) if audio_data is not None else audio_sample
         audio.save_audio_file(audio_data)
+        self._stop_recording_event.clear()
 
     @abstractmethod
     def transcribe(self) -> str:
         """
         Transcribes an audio file into text.
-
-        Args:
-            path_to_file (str, optional): The path to the audio file to be transcribed.
 
         Returns:
             str: The transcribed text.
@@ -63,7 +88,7 @@ class WhisperTranscribe(Transcriber):
 
 class DeepgramTranscribe(Transcriber):
     def transcribe(self) -> str:
-        deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+        deepgram = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"))
 
         with open(self.file_path, 'rb') as buffer_data:
             payload = { 'buffer': buffer_data }
@@ -75,29 +100,74 @@ class DeepgramTranscribe(Transcriber):
             return response.results.channels[0].alternatives[0].transcript
 
 class DeepgramStreamTranscribe(Transcriber):
+    def __init__(self, file_path: str = OUTPUT_FILE_NAME) -> None:
+        super().__init__(file_path)
+        self.__transcript_text = ""
+        self.__transcript_ready_event = threading.Event()
+
     def transcribe(self) -> str:
-        print(self.transcript_text)
-        return self.transcript_text
+        self.__transcript_ready_event.wait()
+        return self.__transcript_text
 
     def background_recording(self) -> None:
-        self.transcript_text = ""
-        deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+        self.__transcript_ready_event.clear()
+        last_message_time = time.time()
+        message_lock = threading.Lock()
+        early_stop_event = threading.Event()
+        transcript_text = ""
+
+
+        deepgram = DeepgramClient(os.getenv('DEEPGRAM_API_KEY'))
         dg_connection = deepgram.listen.live.v('1')
 
         def on_message(self, result, **kwargs):
-            sentence = result.channel.alternatives[0].transcript
-            if len(sentence) == 0:
-                return
-            self.transcript_text += sentence + '\n'
+            nonlocal last_message_time
+            nonlocal transcript_text
+            with message_lock:
+                sentence = result.channel.alternatives[0].transcript
+                if len(sentence) > 0:
+                    last_message_time = time.time()
+                    transcript_text += sentence + ' '
+
+        def on_error(self, error, **kwargs):
+            early_stop_event.set()
+            logger.error(f"Handled Error: {error}")
+
+        def on_unhandled(self, unhandled, **kwargs):
+            early_stop_event.set()
+            logger.error(f"Unhandled Websocket Message: {unhandled}")
 
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
-        options = LiveOptions(smart_format=True, model="nova-2", language="en-US")
-        dg_connection.start(options)  # Create a websocket connection to Deepgram
+        dg_connection.on(LiveTranscriptionEvents.Error, on_error)
+        dg_connection.on(LiveTranscriptionEvents.Unhandled, on_unhandled)
 
-        while not self.stop_recording_event.is_set():
-            audio_sample = audio.record_batch(record_sec=0.25)
-            audio_bytes = (audio_sample * 32767).astype('int16').tobytes()  # 16-bit signed PCM (linear16)
+        dg_connection.start(LiveOptions(
+            model="nova-2",
+            language="en-US",
+            smart_format=True,
+            encoding=audio.ENCODING,
+            channels=audio.MIC.channels,
+            sample_rate=audio.SAMPLE_RATE,
+        ))
+
+        while not self._stop_recording_event.is_set() and not early_stop_event.is_set():
+            audio_bytes = audio.record_batch(record_sec=0.25, encode=True)
             dg_connection.send(audio_bytes)
+
+        dg_connection.finish()
+
+        if not early_stop_event.is_set():
+            def time_since_last_message():
+                with message_lock:
+                    return time.time() - last_message_time
+
+            while time_since_last_message() < 1:
+                time.sleep(1)
+
+        message_lock.acquire()
+        self.__transcript_text = transcript_text
+        self.__transcript_ready_event.set()
+        self._stop_recording_event.clear()
 
 
 class TranscriberFactory:

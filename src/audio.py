@@ -11,21 +11,25 @@ RECORD_SEC = 1                  # [sec]. duration recording audio.
 BLOCKSIZE = 256                 # good value suggested by documentation
 NUMFRAMES = BLOCKSIZE // 2      # numframes should be less than blocksize per the docs
 SAMPLES_PER_SEC = SAMPLE_RATE // NUMFRAMES
+ENCODING = "linear16"
+
 
 SPEAKER_ID = str(sc.default_speaker().name)
-MIC = sc.get_microphone( id=SPEAKER_ID, include_loopback=False) 
+MIC = sc.get_microphone( id=SPEAKER_ID, include_loopback=False)
 
 
 logger.debug = print
-logger.debug(f"Mic being used: {SPEAKER_ID}")
+logger.debug(f"Mic being used: {SPEAKER_ID}, channels {MIC.channels}")
 
 
-def record_batch(record_sec: float = RECORD_SEC) -> np.ndarray:
+def record_batch(record_sec: float = RECORD_SEC, encode: bool = False) -> np.ndarray:
     """
-    Records an audio batch for a specified duration.
+    Records an audio batch for a specified duration. 
+    The returned data can be raw or encoded to 16-bit signed PCM (linear16)
 
     Args:
-        record_sec (int): The duration of the recording in seconds. Defaults to the value of RECORD_SEC.
+        record_sec (float): The duration of the recording in seconds. Defaults to the value of RECORD_SEC.
+        encode (bool): Indicates if the returned data should be encoded. Defaults to False.
 
     Returns:
         np.ndarray: The recorded audio sample.
@@ -39,13 +43,16 @@ def record_batch(record_sec: float = RECORD_SEC) -> np.ndarray:
     logger.debug(f"Recording for {record_sec:.3f} second(s)...")
     num_samples = int(SAMPLES_PER_SEC * record_sec)
     total_frames = num_samples * NUMFRAMES
-    full_audio_sample = np.zeros((total_frames, 2))
+    full_audio_sample = np.zeros((total_frames, MIC.channels))
     frame_index = 0
 
     with MIC.recorder(samplerate=SAMPLE_RATE, blocksize=BLOCKSIZE) as recorder:
         for _ in range(num_samples):
             full_audio_sample[frame_index:frame_index + NUMFRAMES] = recorder.record(numframes=NUMFRAMES)
             frame_index += NUMFRAMES
+
+    if encode:  # 16-bit signed PCM (linear16)
+        full_audio_sample = (full_audio_sample * 32767).astype('int16').tobytes()
 
     return full_audio_sample
 

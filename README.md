@@ -19,3 +19,8 @@ Ensure that your OpenAI key is stored as an enviornment variable like so.
 ```sh
 export OPENAI_API_KEY="your_api_key_here"
 ```
+
+Optionally if using the DeepGram model for transcription.
+```sh
+export DEEPGRAM_API_KEY="your_api_key_here"
+```

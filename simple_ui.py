@@ -1,9 +1,8 @@
-import numpy as np
 import PySimpleGUI as sg
 from loguru import logger
 
 
-from src import audio, llm
+from src import llm
 from src.constants import APPLICATION_WIDTH, OFF_IMAGE, ON_IMAGE
 from src.transcriber import T_Type, TranscriberFactory
 
@@ -61,11 +60,11 @@ WINDOW = sg.Window("Keyboard Test", layout, return_keyboard_events=True, use_def
 
 logger.debug = print
 
-scriber = TranscriberFactory.get_transcriber(T_Type.DEEPGRAM)
+scriber = TranscriberFactory.get_transcriber(T_Type.DEEPGRAM_STREAM)
 
 while True:
     event, values = WINDOW.read()
-    print(f"Event: {event}")
+    logger.debug(f"Event: {event}")
     if event in ["Cancel", sg.WIN_CLOSED]:
         logger.debug("Closing...")
         break
@@ -77,7 +76,7 @@ while True:
         record_status_button.metadata.state = button_on
         logger.debug(f"Recording toggled {button_on}...")
         if button_on:
-            WINDOW.perform_long_operation(scriber.background_recording, "-FINISHED-RECORDING-")
+            WINDOW.perform_long_operation(scriber.background_recording, "A: FINISHED RECORDING")
         else:
             scriber.stop_recording()
         record_status_button.update(image_data=ON_IMAGE if button_on else OFF_IMAGE)
