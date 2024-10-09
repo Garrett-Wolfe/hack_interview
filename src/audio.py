@@ -6,6 +6,8 @@ from loguru import logger
 
 from src.constants import OUTPUT_FILE_NAME
 
+LOOPBACK = False
+
 SAMPLE_RATE = 48000             # [Hz]. sampling rate.
 RECORD_SEC = 1                  # [sec]. duration recording audio.
 BLOCKSIZE = 256                 # good value suggested by documentation
@@ -14,11 +16,15 @@ SAMPLES_PER_SEC = SAMPLE_RATE // NUMFRAMES
 ENCODING = "linear16"
 
 
-SPEAKER_ID = str(sc.default_speaker().name)
-MIC = sc.get_microphone( id=SPEAKER_ID, include_loopback=False)
+if LOOPBACK:
+    DEVICE_ID = str(sc.default_speaker().name)
+    logger.debug(f"Speaker being used: {DEVICE_ID}")
+else:
+    DEVICE_ID = str(sc.default_microphone().name)
+    logger.debug(f"Mic being used: {DEVICE_ID}")
 
-
-logger.debug(f"Mic being used: {SPEAKER_ID}, channels {MIC.channels}")
+MIC = sc.get_microphone(id=DEVICE_ID, include_loopback=LOOPBACK)
+logger.debug(f"Mic channels {MIC.channels}")
 
 
 def record_batch(record_sec: float = RECORD_SEC, encode: bool = False) -> np.ndarray:
